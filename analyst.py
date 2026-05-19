@@ -144,3 +144,42 @@ if user_reply_mcar == 'yes':
     df = fix_missing_data(df, pattern_report)
     df.to_csv("cleaned.csv", index=False)
     print("\n💾 Success! Cleaned data saved to 'cleaned.csv'")
+# --- PHASE 4: SMART STANDARDIZATION ---
+print("\n🤖 Gemma is analyzing the data structure for inconsistencies...")
+
+data_sample = df.head(3).to_string()
+standard_prompt = f"""
+The user has zero data knowledge. Look at this data sample:
+{data_sample}
+
+Explain that some columns might have inconsistent text (like 'Pizza' vs 'pizza') 
+or numbers trapped with symbols (like '$1,000' or '4.5/5'). 
+Ask the user a simple 'yes' or 'no' question: should I 'Standardize' the data 
+to make future analysis and math 100% accurate?
+"""
+
+response_4 = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': standard_prompt}])
+print("\n" + response_4['message']['content'])
+
+user_reply_std = input("\n(yes/no): ").lower().strip()
+
+if user_reply_std == 'yes':
+    print("\n🧼 Gemma is now standardizing the dataset...")
+    
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            df[col] = df[col].astype(str).str.strip().str.lower()
+            clean_test = df[col].str.replace(r'[^\d.]', '', regex=True)
+            numeric_check = pd.to_numeric(clean_test, errors='coerce')
+            if numeric_check.notnull().mean() > 0.6:
+                df[col] = numeric_check
+                print(f"💎 Column '{col}' converted from text to numbers.")
+            else:
+                print(f"📄 Column '{col}' cleaned as text.")
+                
+    print("\n✅ Standardization complete! Your data is now uniform.")
+    df.to_csv("standardized_data.csv", index=False)
+    print("💾 Progress saved to 'standardized_data.csv'")
+
+else:
+    print("\n👍 Understood. Proceeding with data in its original format.")

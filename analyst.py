@@ -183,3 +183,31 @@ if user_reply_std == 'yes':
 
 else:
     print("\n👍 Understood. Proceeding with data in its original format.")
+# --- PHASE 5: OUTLIER DETECTION ---
+user_reply_out = input("\nShould I check for outliers in each column? (yes/no): ").lower().strip()
+
+if user_reply_out == 'yes':
+    print("\n🔍 Analyzing columns for extreme values and rare categories...")
+    print("-" * 45)
+
+    num_cols = df.select_dtypes(include=['number']).columns.tolist()
+    for col in num_cols:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        outlier_count = df[(df[col] < lower_bound) | (df[col] > upper_bound)].shape[0]
+        print(f"{col} - {outlier_count} outliers (Numerical)")
+
+    cat_cols = df.select_dtypes(include=['object']).columns.tolist()
+    for col in cat_cols:
+        counts = df[col].value_counts(normalize=True)
+        rare_labels_count = counts[counts < 0.01].count()
+        print(f"{col} - {rare_labels_count} rare categories (Categorical)")
+
+    print("-" * 45)
+    print("✅ Outlier analysis complete.")
+
+else:
+    print("\n👍 Skipping outlier detection.")

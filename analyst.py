@@ -211,3 +211,64 @@ if user_reply_out == 'yes':
 
 else:
     print("\n👍 Skipping outlier detection.")
+# --- PHASE 6: AI-DRIVEN OUTLIER HANDLING ---
+
+all_cols = df.columns.tolist()
+sample_vals = df.head(1).to_dict()
+
+filter_prompt = f"""
+You are a Data Architect. Look at these columns: {all_cols}
+And this sample data: {sample_vals}
+
+Identify columns that are:
+1. Unique Identifiers (IDs, Codes)
+2. Contact Info (Phone numbers, Emails)
+3. Web Links (URLs)
+4. Personal Names or Addresses
+
+List ONLY the names of the columns that should be EXCLUDED from mathematical outlier detection.
+Format: ["col1", "col2"]
+"""
+
+print("\n🤖 Gemma is determining which columns are 'Identity-based'...")
+filter_res = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': filter_prompt}])
+excluded_text = filter_res['message']['content']
+
+import re
+import json
+match = re.search(r'\[.*\]', excluded_text)
+excluded_cols = json.loads(match.group()) if match else []
+
+num_cols = df.select_dtypes(include=['number']).columns.tolist()
+final_outlier_targets = [c for c in num_cols if c not in excluded_cols]
+
+question_prompt = f"""
+I have analyzed the dataset. I will ignore columns like {excluded_cols} 
+as they contain identity information. 
+
+I found outliers in: {final_outlier_targets}. 
+Ask the user in a friendly way if I should clear these outliers to improve 
+the data quality for math and machine learning.
+"""
+
+response_out = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': question_prompt}])
+print("\n" + response_out['message']['content'])
+
+user_reply_fix_out = input("\n(yes/no): ").lower().strip()
+
+if user_reply_fix_out == 'yes':
+    print(f"\n🛠️ Standardizing {len(final_outlier_targets)} columns...")
+    
+    for col in final_outlier_targets:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower = Q1 - 1.5 * IQR
+        upper = Q3 + 1.5 * IQR
+        df[col] = df[col].clip(lower=lower, upper=upper)
+        print(f"✅ {col}: Outliers capped.")
+
+    df.to_csv("final_cleaned_data.csv", index=False)
+    print("\n💾 Success! Dataset is now clean and saved to 'final_cleaned_data.csv'")
+else:
+    print("\n👍 Understood. Keeping all values as they are.")

@@ -365,3 +365,128 @@ Keep suggestions simple and explain each one in one line.
 print("\n🤖 Gemma is thinking about new features we can engineer...")
 response_fe = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': feature_prompt}])
 print("\n" + response_f)
+# --- PHASE 9: MODEL SELECTION + CROSS VALIDATION ---
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.svm import SVR
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.model_selection import cross_val_score
+import numpy as np
+
+cv_intro_prompt = f"""
+The user is a beginner. Explain in very simple words:
+- The target column '{target_col}' has text values like 'yes' and 'no'
+- We need to convert them to numbers (yes=1, no=0) so the model can understand
+- Then we will test 5 different models on this data
+- Each model will be tested using Cross Validation to find the most accurate one
+Keep it very simple, 2-3 lines only.
+"""
+
+print("\n🤖 Gemma is preparing for model testing...")
+response_cv_intro = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': cv_intro_prompt}])
+print("\n" + response_cv_intro['message']['content'])
+
+X = df.drop(columns=[target_col])
+y = df[target_col].astype(str).str.strip().str.lower()
+y = y.replace({'nan': 'no'})
+
+le = LabelEncoder()
+y = le.fit_transform(y)
+print(f"\n✅ Target column '{target_col}' converted to numbers.")
+
+cat_cols_x = X.select_dtypes(include=['object', 'string']).columns.tolist()
+for col in cat_cols_x:
+    X[col] = LabelEncoder().fit_transform(X[col].astype(str))
+print(f"✅ Encoded {len(cat_cols_x)} categorical columns: {cat_cols_x}")
+
+if problem_type == "Classification":
+    models = {
+        "1. Logistic Regression"         : LogisticRegression(max_iter=1000),
+        "2. Random Forest"               : RandomForestClassifier(n_estimators=100, random_state=42),
+        "3. SVM"                         : SVC(kernel='rbf'),
+        "4. KNN"                         : KNeighborsClassifier(n_neighbors=5),
+        "5. XGBoost (Gradient Boosting)" : GradientBoostingClassifier(n_estimators=100, random_state=42)
+    }
+    scoring = 'accuracy'
+else:
+    models = {
+        "1. Linear Regression"           : LinearRegression(),
+        "2. Random Forest"               : RandomForestRegressor(n_estimators=100, random_state=42),
+        "3. SVR"                         : SVR(kernel='rbf'),
+        "4. KNN"                         : KNeighborsRegressor(n_neighbors=5),
+        "5. XGBoost (Gradient Boosting)" : GradientBoostingRegressor(n_estimators=100, random_state=42)
+    }
+    scoring = 'r2'
+
+print(f"\n🤖 Gemma is running Cross Validation on all 5 models...")
+print("-" * 45)
+
+cv_scores = {}
+
+for model_name, model in models.items():
+    if "Logistic" in model_name or "SVM" in model_name or "SVR" in model_name or "KNN" in model_name:
+        scaler = StandardScaler()
+        X_prepared = scaler.fit_transform(X)
+    else:
+        X_prepared = X.values
+
+    scores = cross_val_score(model, X_prepared, y, cv=5, scoring=scoring)
+    avg_score = round(scores.mean() * 100, 2)
+    cv_scores[model_name] = avg_score
+    print(f"{model_name}: {avg_score}%")
+
+print("-" * 45)
+print("✅ Cross Validation complete!")
+
+best_model_name = max(cv_scores, key=cv_scores.get)
+best_score = cv_scores[best_model_name]
+
+recommend_prompt = f"""
+You are a data scientist explaining results to a beginner.
+Here are the cross validation scores for 5 models:
+{cv_scores}
+
+The best model is: {best_model_name} with {best_score}% score.
+The problem type is: {problem_type}
+The dataset has {df.shape[0]} rows and {df.shape[1]} columns.
+
+Explain in simple words:
+- What these scores mean
+- Why {best_model_name} is the best choice
+- One sentence about what makes it better than the others
+Keep it simple and friendly, 3-4 lines only.
+"""
+
+print("\n🤖 Gemma is analyzing the results...")
+response_recommend = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': recommend_prompt}])
+print("\n" + response_recommend['message']['content'])
+
+print("\n📊 Here are all your options:")
+print("-" * 45)
+for i, (name, score) in enumerate(cv_scores.items(), 1):
+    marker = "⭐ RECOMMENDED" if name == best_model_name else ""
+    print(f"{name}: {score}% {marker}")
+print("-" * 45)
+
+user_model_choice = input(f"\nPress ENTER to go with '{best_model_name}' or type a number (1-5) to pick manually: ").strip()
+
+if user_model_choice == "":
+    final_model_name = best_model_name
+    final_model = models[best_model_name]
+    print(f"\n✅ Going with: {final_model_name}")
+elif user_model_choice in ["1", "2", "3", "4", "5"]:
+    final_model_name = list(models.keys())[int(user_model_choice) - 1]
+    final_model = models[final_model_name]
+    print(f"\n✅ You picked: {final_model_name}")
+else:
+    final_model_name = best_model_name
+    final_model = models[best_model_name]
+    print(f"\n✅ Going with recommended: {final_model_name}")
+
+print(f"\n🎯 Final Model: {final_model_name}")
+print(f"📊 CV Score: {cv_scores[final_model_name]}%")

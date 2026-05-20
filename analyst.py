@@ -272,3 +272,66 @@ if user_reply_fix_out == 'yes':
     print("\n💾 Success! Dataset is now clean and saved to 'final_cleaned_data.csv'")
 else:
     print("\n👍 Understood. Keeping all values as they are.")
+# --- PHASE 7: TARGET COLUMN SELECTION ---
+
+latest_file = "data.csv"
+if user_reply_mcar == 'yes':
+    latest_file = "cleaned.csv"
+if user_reply_std == 'yes':
+    latest_file = "standardized_data.csv"
+if user_reply_fix_out == 'yes':
+    latest_file = "final_cleaned_data.csv"
+
+df = pd.read_csv(latest_file)
+print(f"\n✅ Loaded latest data from '{latest_file}'")
+
+col_list = df.columns.tolist()
+
+target_prompt = f"""
+You are a data scientist helping a beginner.
+The dataset has these columns: {col_list}
+
+Show the column names nicely numbered like:
+1. column_name
+2. column_name
+
+Then ask them: Which column do you want to predict?
+Keep it very simple and friendly.
+"""
+
+print("\n🤖 Gemma is looking at your columns...")
+response_target = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': target_prompt}])
+print("\n" + response_target['message']['content'])
+
+target_col = input("\nEnter the column name you want to predict: ").lower().strip()
+
+while target_col not in df.columns:
+    print(f"❌ '{target_col}' not found. Please check the spelling.")
+    target_col = input("Enter the column name again: ").lower().strip()
+
+print(f"\n✅ Target column set to: '{target_col}'")
+
+unique_vals = df[target_col].nunique()
+
+if unique_vals <= 10:
+    problem_type = "Classification"
+else:
+    problem_type = "Regression"
+
+problem_prompt = f"""
+The user wants to predict '{target_col}'.
+It has {unique_vals} unique values.
+The problem type is {problem_type}.
+
+Explain in simple words:
+- What {problem_type} means in this context
+- Why this column is {problem_type}
+- What kind of answer the model will give them
+One short paragraph. Keep it very simple.
+"""
+
+print("\n🤖 Gemma is analyzing your target column...")
+response_problem = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': problem_prompt}])
+print("\n" + response_problem['message']['content'])
+print(f"\n📊 Problem Type: {problem_type}")
+print(f"🎯 Target Column: {target_col}")

@@ -490,3 +490,120 @@ else:
 
 print(f"\n🎯 Final Model: {final_model_name}")
 print(f"📊 CV Score: {cv_scores[final_model_name]}%")
+# --- PHASE 10: FEATURE SELECTION + FINAL MODEL TRAINING ---
+import pickle
+from sklearn.metrics import accuracy_score
+
+feature_sel_prompt = f"""
+The user is a beginner. Explain in very simple words:
+- We just found that {final_model_name} is the best model
+- Now we want to remove columns that are not useful for this model
+- This is called Feature Selection
+- We check how strongly each column is related to '{target_col}'
+- Weak columns get removed so the model can focus on what matters
+Keep it very simple, 2-3 lines only.
+"""
+
+print("\n🤖 Gemma is explaining feature selection...")
+response_fs = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': feature_sel_prompt}])
+print("\n" + response_fs['message']['content'])
+
+print("\n🔍 Checking each column's strength with the target...")
+print("-" * 45)
+
+temp_df = X.copy()
+temp_df['target'] = y
+
+correlations = temp_df.corr()['target'].drop('target').abs()
+correlations = correlations.sort_values(ascending=False)
+
+for col, score in correlations.items():
+    strength = "✅ Strong" if score >= 0.05 else "❌ Weak"
+    print(f"{col}: {round(score, 4)} → {strength}")
+
+print("-" * 45)
+
+threshold = 0.05
+selected_features = correlations[correlations >= threshold].index.tolist()
+dropped_features = correlations[correlations < threshold].index.tolist()
+
+print(f"\n✅ Keeping {len(selected_features)} strong columns: {selected_features}")
+print(f"🗑️ Dropping {len(dropped_features)} weak columns: {dropped_features}")
+
+explain_sel_prompt = f"""
+You are a data scientist explaining to a beginner.
+We kept these columns for the model: {selected_features}
+We dropped these weak columns: {dropped_features}
+The model we are using is: {final_model_name}
+
+Explain in simple words why keeping only strong columns helps the model.
+2-3 lines only. Keep it very friendly.
+"""
+
+print("\n🤖 Gemma is explaining the feature selection results...")
+response_fs2 = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': explain_sel_prompt}])
+print("\n" + response_fs2['message']['content'])
+
+user_reply_fs = input("\nShould I train the final model with these selected features? (yes/no): ").lower().strip()
+
+if user_reply_fs == 'yes':
+    print(f"\n⚙️ Training {final_model_name} on selected features...")
+
+    X_final = X[selected_features]
+
+    if "Logistic" in final_model_name or "SVM" in final_model_name or "SVR" in final_model_name or "KNN" in final_model_name:
+        scaler = StandardScaler()
+        X_final_scaled = scaler.fit_transform(X_final)
+        pickle.dump(scaler, open("scaler.pkl", "wb"))
+        print("✅ Data scaled for model.")
+    else:
+        X_final_scaled = X_final.values
+        scaler = None
+        print("✅ No scaling needed for this model.")
+
+    final_model.fit(X_final_scaled, y)
+    print(f"✅ {final_model_name} trained successfully!")
+
+    train_preds = final_model.predict(X_final_scaled)
+    train_acc = round(accuracy_score(y, train_preds) * 100, 2)
+    print(f"\n📊 Training Accuracy: {train_acc}%")
+    print(f"📊 Cross Validation Score was: {cv_scores[final_model_name]}%")
+
+    final_result_prompt = f"""
+    You are a data scientist explaining results to a beginner.
+    The model is: {final_model_name}
+    Cross Validation Score: {cv_scores[final_model_name]}%
+    Training Accuracy: {train_acc}%
+    Target column: {target_col}
+    Selected features used: {selected_features}
+
+    Explain in simple words:
+    - What the training accuracy means
+    - Why CV score is more reliable than training accuracy
+    - What this model can now do
+    Keep it very simple and friendly. 3-4 lines only.
+    """
+
+    print("\n🤖 Gemma is explaining the final results...")
+    response_final = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': final_result_prompt}])
+    print("\n" + response_final['message']['content'])
+
+    pickle.dump(final_model, open("model.pkl", "wb"))
+    pickle.dump(selected_features, open("selected_features.pkl", "wb"))
+    print(f"\n💾 Model saved to 'model.pkl'")
+    print(f"💾 Selected features saved to 'selected_features.pkl'")
+
+    print("\n" + "=" * 45)
+    print("🎉 YOUR AI EDA ASSISTANT IS COMPLETE!")
+    print("=" * 45)
+    print(f"✅ Problem Type     : {problem_type}")
+    print(f"✅ Target Column    : {target_col}")
+    print(f"✅ Best Model       : {final_model_name}")
+    print(f"✅ CV Score         : {cv_scores[final_model_name]}%")
+    print(f"✅ Training Accuracy: {train_acc}%")
+    print(f"✅ Features Used    : {len(selected_features)}")
+    print(f"✅ Model saved to   : model.pkl")
+    print("=" * 45)
+
+else:
+    print("\n👍 Skipping final training. Your pipeline is complete up to model selection!")

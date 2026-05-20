@@ -335,3 +335,33 @@ response_problem = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'co
 print("\n" + response_problem['message']['content'])
 print(f"\n📊 Problem Type: {problem_type}")
 print(f"🎯 Target Column: {target_col}")
+# --- PHASE 8: FEATURE ENGINEERING ---
+
+cols_to_drop = [col for col in ['employee_id', 'is_missing'] if col in df.columns]
+if cols_to_drop:
+    df.drop(columns=cols_to_drop, inplace=True)
+    print(f"\n🗑️ Dropped identity/leftover columns: {cols_to_drop}")
+
+col_info = df.dtypes.to_string()
+sample = df.head(3).to_string()
+
+feature_prompt = f"""
+You are a data scientist. Look at these columns and sample data:
+Columns: {col_info}
+Sample: {sample}
+Target column we are predicting: {target_col}
+
+Suggest 2-3 simple new columns we can create from existing ones that would 
+help predict {target_col} better. 
+
+For example:
+- if there is age and experience, suggest salary_per_year_experience = salary / experience_years
+- if there is performance and training, suggest performance_per_training = performance_score / training_hours
+
+Only suggest things that are mathematically possible with the existing columns.
+Keep suggestions simple and explain each one in one line.
+"""
+
+print("\n🤖 Gemma is thinking about new features we can engineer...")
+response_fe = ollama.chat(model='gemma2:2b', messages=[{'role': 'user', 'content': feature_prompt}])
+print("\n" + response_f)
